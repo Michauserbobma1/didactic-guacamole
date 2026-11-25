@@ -84,7 +84,8 @@ let manualStopRequested = false;
 let hasGeneratedSentence = false;
 
 let recognition = null;
-let browserTranscript = '';
+let finalTranscriptBuffer = '';
+let interimTranscriptBuffer = '';
 
 let mediaRecorder = null;
 let audioStream = null;
@@ -199,6 +200,10 @@ function syncVoiceButtonsUI(processing = false) {
 
 syncVoiceButtonsUI(false);
 
+function getCombinedFastTranscript() {
+  return `${finalTranscriptBuffer} ${interimTranscriptBuffer}`.replace(/\s+/g, ' ').trim();
+}
+
 function pickSupportedMimeType() {
   if (!window.MediaRecorder || typeof MediaRecorder.isTypeSupported !== 'function') {
     return '';
@@ -280,32 +285,54 @@ function setupFastRecognition() {
   if (!SpeechRecognition) return null;
   const rec = new SpeechRecognition();
   rec.lang = 'en-US';
-  rec.continuous = false;
-  rec.interimResults = false;
-  rec.maxAlternatives = 1;
+  rec.continuous = true;
+  rec.interimResults = true;
+  rec.maxAlternatives = 2;
 
   rec.onstart = () => {
     activeVoiceMode = 'fast';
     manualStopRequested = false;
-    browserTranscript = '';
+    finalTranscriptBuffer = '';
+    interimTranscriptBuffer = '';
     syncVoiceButtonsUI(false);
     if (statusText) statusText.innerText = '⚡ Быстрый режим: говорите, затем нажмите «Стоп»';
   };
 
   rec.onresult = (event) => {
-    const transcript = event?.results?.[0]?.[0]?.transcript?.trim() || '';
-    if (transcript) {
-      browserTranscript = transcript;
+    let finalChunk = '';
+    let interimChunk = '';
+
+    for (let i = event.resultIndex; i < event.results.length; i++) {
+      const phrase = event?.results?.[i]?.[0]?.transcript?.trim() || '';
+      if (!phrase) continue;
+      if (event.results[i].isFinal) {
+        finalChunk += (finalChunk ? ' ' : '') + phrase;
+      } else {
+        interimChunk += (interimChunk ? ' ' : '') + phrase;
+      }
+    }
+
+    if (finalChunk) {
+      finalTranscriptBuffer = `${finalTranscriptBuffer} ${finalChunk}`.trim();
+      interimTranscriptBuffer = interimChunk;
+    } else {
+      interimTranscriptBuffer = interimChunk;
+    }
+
+    const combined = getCombinedFastTranscript();
+    if (combined) {
+      openSpeechEditor(combined);
     }
   };
 
   rec.onerror = (event) => {
     const errCode = event?.error || '';
+    const captured = getCombinedFastTranscript() || (speechInput ? speechInput.value.trim() : '');
     activeVoiceMode = null;
     syncVoiceButtonsUI(false);
 
-    if (manualStopRequested && browserTranscript) {
-      openSpeechEditor(browserTranscript);
+    if (captured) {
+      openSpeechEditor(captured);
       if (statusText) statusText.innerText = 'Готово! Проверьте текст и нажмите «Готово».';
       return;
     }
@@ -313,13 +340,13 @@ function setupFastRecognition() {
     if (errCode === 'not-allowed' || errCode === 'service-not-allowed') {
       if (statusText) statusText.innerText = 'Нет доступа к микрофону. Разрешите его в браузере или введите вручную.';
     } else if (statusText) {
-      statusText.innerText = 'Быстрый микрофон не уловил фразу. Попробуйте «🎙️ Запись» или введите вручную.';
+      statusText.innerText = 'Быстрый микрофон не уловил речь. Попробуйте «🎙️ Запись» или введите вручную.';
     }
-    if (currentRussianSentence) openSpeechEditor(browserTranscript);
+    if (currentRussianSentence) openSpeechEditor('');
   };
 
   rec.onend = () => {
-    const captured = browserTranscript || (speechInput ? speechInput.value.trim() : '');
+    const captured = getCombinedFastTranscript() || (speechInput ? speechInput.value.trim() : '');
     activeVoiceMode = null;
     manualStopRequested = false;
     syncVoiceButtonsUI(false);
@@ -329,7 +356,7 @@ function setupFastRecognition() {
       if (statusText) statusText.innerText = 'Готово! Проверьте текст и нажмите «Готово».';
     } else if (currentRussianSentence) {
       openSpeechEditor('');
-      if (statusText) statusText.innerText = 'Ничего не услышал. Попробуйте «⚡ Быстро», «🎙️ Запись» или ручной ввод.';
+      if (statusText) statusText.innerText = 'Быстрый микрофон не вернул текст — используйте «🎙️ Запись» или введите вручную.';
     }
   };
 
@@ -343,7 +370,8 @@ async function startFastVoice() {
   if (feedbackBox) feedbackBox.classList.add('hidden');
   if (retryBtn) retryBtn.classList.add('hidden');
   if (speechInput) speechInput.value = '';
-  browserTranscript = '';
+  finalTranscriptBuffer = '';
+  interimTranscriptBuffer = '';
 
   try {
     recognition.start();
@@ -450,6 +478,12 @@ function stopCurrentVoice() {
     return;
   }
 
+  const captured = getCombinedFastTranscript() || (speechInput ? speechInput.value.trim() : '');
+  if (captured) {
+    openSpeechEditor(captured);
+    if (statusText) statusText.innerText = 'Готово! Проверьте текст и нажмите «Готово».';
+  }
+
   activeVoiceMode = null;
   syncVoiceButtonsUI(false);
   if (recognition) {
@@ -462,7 +496,8 @@ function stopCurrentVoice() {
 function resetVoiceState() {
   manualStopRequested = false;
   activeVoiceMode = null;
-  browserTranscript = '';
+  finalTranscriptBuffer = '';
+  interimTranscriptBuffer = '';
 
   if (mediaRecorder && mediaRecorder.state !== 'inactive') {
     mediaRecorder.onstop = null;
