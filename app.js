@@ -12,9 +12,12 @@ tabBtns.forEach(btn => {
     btn.classList.add('active');
     const name = btn.getAttribute('data-tab');
     Object.keys(panels).forEach(k => {
-      panels[k].classList.toggle('hidden', k !== name);
+      if (panels[k]) panels[k].classList.toggle('hidden', k !== name);
     });
-    if (name === 'cards') renderNextFlashcard();
+    if (name === 'cards') {
+      renderDecksList();
+      renderNextFlashcard();
+    }
   });
 });
 
@@ -72,6 +75,7 @@ let total = parseInt(localStorage.getItem('total') || '0', 10);
 let mistakes = JSON.parse(localStorage.getItem('mistakes') || '[]');
 let recentHistory = JSON.parse(localStorage.getItem('recentHistory') || '[]');
 let flashcards = JSON.parse(localStorage.getItem('flashcards') || '[]');
+let decks = JSON.parse(localStorage.getItem('decks') || '[]');
 
 let isRecording = false;
 let manualStopRequested = false;
@@ -86,6 +90,15 @@ let lastUserSpeech = '';
 let alreadyCountedForCurrent = false;
 let currentCard = null;
 let dialogHistory = [];
+
+// Состояние режимов карточек
+let cardMode = 'all'; // 'all' | 'decks'
+let hardStreakCount = 0;
+let allModeSeenIds = new Set();
+let activeSessionDeckIds = [];
+let activeSessionQueue = [];
+let activeSessionTotal = 0;
+let activeSessionReport = { easy: 0, hard: 0, again: 0 };
 
 updateStatsUI();
 renderMistakes();
@@ -188,8 +201,8 @@ if (SpeechRecognition) {
     manualStopRequested = false;
     finalTranscriptBuffer = '';
     latestInterimBuffer = '';
-    micBtn.classList.add('recording');
-    statusText.innerText = 'Запись включена. Нажмите на микрофон ещё раз, чтобы остановить.';
+    if (micBtn) micBtn.classList.add('recording');
+    if (statusText) statusText.innerText = 'Запись включена. Нажмите на микрофон ещё раз, чтобы остановить.';
   };
 
   recognition.onresult = (event) => {
@@ -214,32 +227,34 @@ if (SpeechRecognition) {
     }
 
     const preview = getCombinedTranscript();
-    if (preview) {
+    if (preview && speechInput && speechEditCard) {
       speechInput.value = preview;
       speechEditCard.classList.remove('hidden');
-      statusText.innerText = 'Распознаю... Нажмите на микрофон снова, когда закончите.';
+      if (statusText) statusText.innerText = 'Распознаю... Нажмите на микрофон снова, когда закончите.';
     }
   };
 
   recognition.onerror = (event) => {
     const errCode = event?.error || '';
-    const collected = getCombinedTranscript() || speechInput.value.trim();
+    const collected = getCombinedTranscript() || (speechInput ? speechInput.value.trim() : '');
 
     isRecording = false;
-    micBtn.classList.remove('recording');
+    if (micBtn) micBtn.classList.remove('recording');
 
     if (manualStopRequested && collected) {
       openSpeechEditor(collected);
-      statusText.innerText = 'Запись остановлена. Проверьте текст и нажмите «Готово».';
+      if (statusText) statusText.innerText = 'Запись остановлена. Проверьте текст и нажмите «Готово».';
       return;
     }
 
-    if (errCode === 'not-allowed' || errCode === 'service-not-allowed') {
-      statusText.innerText = 'Доступ к микрофону запрещён. Разрешите его в настройках браузера или введите текст вручную.';
-    } else if (errCode === 'no-speech') {
-      statusText.innerText = 'Речь не уловлена. Нажмите на микрофон, скажите фразу и нажмите снова для остановки.';
-    } else {
-      statusText.innerText = 'Сбой распознавания. Проверьте текст ниже или введите вручную.';
+    if (statusText) {
+      if (errCode === 'not-allowed' || errCode === 'service-not-allowed') {
+        statusText.innerText = 'Доступ к микрофону запрещён. Разрешите его в настройках браузера или введите текст вручную.';
+      } else if (errCode === 'no-speech') {
+        statusText.innerText = 'Речь не уловлена. Нажмите на микрофон, скажите фразу и нажмите снова для остановки.';
+      } else {
+        statusText.innerText = 'Сбой распознавания. Проверьте текст ниже или введите вручную.';
+      }
     }
 
     if (currentRussianSentence) {
@@ -250,34 +265,34 @@ if (SpeechRecognition) {
   recognition.onend = () => {
     const collected = getCombinedTranscript();
     isRecording = false;
-    micBtn.classList.remove('recording');
+    if (micBtn) micBtn.classList.remove('recording');
 
     if (manualStopRequested) {
       manualStopRequested = false;
-      const finalText = collected || speechInput.value.trim();
+      const finalText = collected || (speechInput ? speechInput.value.trim() : '');
       if (finalText) {
         openSpeechEditor(finalText);
-        statusText.innerText = 'Запись выключена. Проверьте текст и нажмите «Готово».';
+        if (statusText) statusText.innerText = 'Запись выключена. Проверьте текст и нажмите «Готово».';
       } else if (currentRussianSentence) {
         openSpeechEditor('');
-        statusText.innerText = 'Ничего не распознано. Попробуйте ещё раз или введите текст вручную.';
+        if (statusText) statusText.innerText = 'Ничего не распознано. Попробуйте ещё раз или введите текст вручную.';
       }
       return;
     }
 
     if (collected) {
       openSpeechEditor(collected);
-      statusText.innerText = 'Проверьте распознанный текст и нажмите «Готово».';
+      if (statusText) statusText.innerText = 'Проверьте распознанный текст и нажмите «Готово».';
     }
   };
-} else {
+} else if (statusText) {
   statusText.innerText = 'Голосовой ввод не поддерживается — используйте ручной ввод.';
 }
 
 function stopMicManual() {
   manualStopRequested = true;
   isRecording = false;
-  micBtn.classList.remove('recording');
+  if (micBtn) micBtn.classList.remove('recording');
 
   const collected = getCombinedTranscript();
   if (collected) {
@@ -296,7 +311,7 @@ function resetMicState() {
   isRecording = false;
   finalTranscriptBuffer = '';
   latestInterimBuffer = '';
-  micBtn.classList.remove('recording');
+  if (micBtn) micBtn.classList.remove('recording');
   if (recognition) {
     try {
       recognition.abort();
@@ -305,50 +320,61 @@ function resetMicState() {
 }
 
 function openSpeechEditor(text) {
-  speechInput.value = text;
-  speechEditCard.classList.remove('hidden');
+  if (speechInput) speechInput.value = text;
+  if (speechEditCard) speechEditCard.classList.remove('hidden');
 }
 
-editSpeechBtn.addEventListener('click', () => {
-  speechInput.focus();
-  speechInput.setSelectionRange(speechInput.value.length, speechInput.value.length);
-  statusText.innerText = 'Подправьте предложение и нажмите «Готово»';
-});
-
-manualInputBtn.addEventListener('click', () => {
-  openSpeechEditor(speechInput.value || '');
-  speechInput.focus();
-});
-
-submitSpeechBtn.addEventListener('click', () => {
-  const editedText = speechInput.value.trim();
-  if (!editedText) {
-    statusText.innerText = 'Введите перевод перед отправкой.';
+if (editSpeechBtn) {
+  editSpeechBtn.addEventListener('click', () => {
+    if (!speechInput) return;
     speechInput.focus();
-    return;
-  }
-  lastUserSpeech = editedText;
-  checkTranslation(editedText);
-});
+    speechInput.setSelectionRange(speechInput.value.length, speechInput.value.length);
+    if (statusText) statusText.innerText = 'Подправьте предложение и нажмите «Готово»';
+  });
+}
 
-micBtn.addEventListener('click', () => {
-  if (!recognition) return;
-  if (isRecording) {
-    stopMicManual();
-  } else {
-    feedbackBox.classList.add('hidden');
-    retryBtn.classList.add('hidden');
-    speechInput.value = '';
-    try {
-      recognition.start();
-    } catch (e) {
-      resetMicState();
-      recognition.start();
+if (manualInputBtn) {
+  manualInputBtn.addEventListener('click', () => {
+    openSpeechEditor(speechInput ? speechInput.value || '' : '');
+    if (speechInput) speechInput.focus();
+  });
+}
+
+if (submitSpeechBtn) {
+  submitSpeechBtn.addEventListener('click', () => {
+    const editedText = speechInput ? speechInput.value.trim() : '';
+    if (!editedText) {
+      if (statusText) statusText.innerText = 'Введите перевод перед отправкой.';
+      if (speechInput) speechInput.focus();
+      return;
     }
-  }
-});
+    lastUserSpeech = editedText;
+    checkTranslation(editedText);
+  });
+}
 
-speakBtn.addEventListener('click', () => speakEnglish(currentEnglishTranslation));
+if (micBtn) {
+  micBtn.addEventListener('click', () => {
+    if (!recognition) return;
+    if (isRecording) {
+      stopMicManual();
+    } else {
+      if (feedbackBox) feedbackBox.classList.add('hidden');
+      if (retryBtn) retryBtn.classList.add('hidden');
+      if (speechInput) speechInput.value = '';
+      try {
+        recognition.start();
+      } catch (e) {
+        resetMicState();
+        recognition.start();
+      }
+    }
+  });
+}
+
+if (speakBtn) {
+  speakBtn.addEventListener('click', () => speakEnglish(currentEnglishTranslation));
+}
 
 // Запрос через серверную функцию Netlify (ключ скрыт на сервере)
 async function callGemini(promptText, maxTokens = 160, temperature = 0.85) {
@@ -381,26 +407,26 @@ async function generateSentence() {
   lastAction = 'generate';
   alreadyCountedForCurrent = false;
   resetMicState();
-  const userTopic = topicInput.value.trim() || 'Путешествия';
+  const userTopic = (topicInput && topicInput.value.trim()) || 'Путешествия';
 
-  statusText.innerText = 'Генерирую предложение...';
-  targetSentence.innerText = 'Загрузка...';
-  feedbackBox.classList.add('hidden');
-  speechEditCard.classList.add('hidden');
-  speechInput.value = '';
-  speakBtn.classList.add('hidden');
-  manualInputBtn.classList.add('hidden');
-  retryBtn.classList.add('hidden');
+  if (statusText) statusText.innerText = 'Генерирую предложение...';
+  if (targetSentence) targetSentence.innerText = 'Загрузка...';
+  if (feedbackBox) feedbackBox.classList.add('hidden');
+  if (speechEditCard) speechEditCard.classList.add('hidden');
+  if (speechInput) speechInput.value = '';
+  if (speakBtn) speakBtn.classList.add('hidden');
+  if (manualInputBtn) manualInputBtn.classList.add('hidden');
+  if (retryBtn) retryBtn.classList.add('hidden');
 
   if (mistakes.length > 0 && Math.random() < 0.2) {
     const randomMistake = mistakes[Math.floor(Math.random() * mistakes.length)];
     currentRussianSentence = randomMistake.rus;
     currentEnglishTranslation = randomMistake.eng;
-    targetSentence.innerText = `[Повторение] ${currentRussianSentence}`;
-    statusText.innerText = 'Закрепляем известную ошибку! Нажмите на микрофон для старта/стопа или введите текст';
-    micBtn.disabled = false;
-    manualInputBtn.classList.remove('hidden');
-    speakBtn.classList.remove('hidden');
+    if (targetSentence) targetSentence.innerText = `[Повторение] ${currentRussianSentence}`;
+    if (statusText) statusText.innerText = 'Закрепляем известную ошибку! Нажмите на микрофон для старта/стопа или введите текст';
+    if (micBtn) micBtn.disabled = false;
+    if (manualInputBtn) manualInputBtn.classList.remove('hidden');
+    if (speakBtn) speakBtn.classList.remove('hidden');
     return;
   }
 
@@ -423,34 +449,34 @@ async function generateSentence() {
       currentRussianSentence = rusMatch[1].trim();
       currentEnglishTranslation = engMatch[1].trim();
       addToHistory(currentRussianSentence);
-      targetSentence.innerText = currentRussianSentence;
-      statusText.innerText = 'Нажмите на микрофон для записи, затем нажмите ещё раз для остановки';
-      micBtn.disabled = false;
-      manualInputBtn.classList.remove('hidden');
-      speakBtn.classList.remove('hidden');
+      if (targetSentence) targetSentence.innerText = currentRussianSentence;
+      if (statusText) statusText.innerText = 'Нажмите на микрофон для записи, затем нажмите ещё раз для остановки';
+      if (micBtn) micBtn.disabled = false;
+      if (manualInputBtn) manualInputBtn.classList.remove('hidden');
+      if (speakBtn) speakBtn.classList.remove('hidden');
     } else {
       currentRussianSentence = result;
       currentEnglishTranslation = '';
-      targetSentence.innerText = result;
-      statusText.innerText = 'Нажмите на микрофон для старта/стопа';
-      micBtn.disabled = false;
-      manualInputBtn.classList.remove('hidden');
+      if (targetSentence) targetSentence.innerText = result;
+      if (statusText) statusText.innerText = 'Нажмите на микрофон для старта/стопа';
+      if (micBtn) micBtn.disabled = false;
+      if (manualInputBtn) manualInputBtn.classList.remove('hidden');
     }
   } catch (err) {
-    targetSentence.innerText = 'Ошибка подключения к ИИ';
-    statusText.innerText = 'Сервер перегружен. Нажмите «Повторить запрос».';
-    retryBtn.classList.remove('hidden');
+    if (targetSentence) targetSentence.innerText = 'Ошибка подключения к ИИ';
+    if (statusText) statusText.innerText = 'Сервер перегружен. Нажмите «Повторить запрос».';
+    if (retryBtn) retryBtn.classList.remove('hidden');
   }
 }
 
-generateBtn.addEventListener('click', generateSentence);
-nextCardBtn.addEventListener('click', generateSentence);
+if (generateBtn) generateBtn.addEventListener('click', generateSentence);
+if (nextCardBtn) nextCardBtn.addEventListener('click', generateSentence);
 
 async function checkTranslation(userSpeech) {
   lastAction = 'check';
-  statusText.innerText = 'ИИ проверяет ваш ответ...';
-  retryBtn.classList.add('hidden');
-  submitSpeechBtn.disabled = true;
+  if (statusText) statusText.innerText = 'ИИ проверяет ваш ответ...';
+  if (retryBtn) retryBtn.classList.add('hidden');
+  if (submitSpeechBtn) submitSpeechBtn.disabled = true;
 
   try {
     const prompt = `Уровень: ${selectedLevel}
@@ -463,8 +489,8 @@ async function checkTranslation(userSpeech) {
 2. Краткий комментарий (если ошибка).`;
 
     const resultText = await callGemini(prompt, 130, 0.7);
-    feedbackContent.innerHTML = resultText.replace(/\n/g, '<br>');
-    feedbackBox.classList.remove('hidden');
+    if (feedbackContent) feedbackContent.innerHTML = resultText.replace(/\n/g, '<br>');
+    if (feedbackBox) feedbackBox.classList.remove('hidden');
 
     if (!alreadyCountedForCurrent) {
       total++;
@@ -476,11 +502,11 @@ async function checkTranslation(userSpeech) {
 
     if (!isError) {
       streak++;
-      statusText.innerText = 'Отлично! Верно! 🎉 Нажмите «Следующий пример»';
+      if (statusText) statusText.innerText = 'Отлично! Верно! 🎉 Нажмите «Следующий пример»';
       removeMistake(currentRussianSentence);
     } else {
       streak = 0;
-      statusText.innerText = 'Есть ошибки. Можно исправить текст выше и нажать «Готово».';
+      if (statusText) statusText.innerText = 'Есть ошибки. Можно исправить текст выше и нажать «Готово».';
       addMistake(currentRussianSentence, currentEnglishTranslation);
       addFlashcard(currentRussianSentence, currentEnglishTranslation);
     }
@@ -488,17 +514,19 @@ async function checkTranslation(userSpeech) {
     localStorage.setItem('streak', streak);
     updateStatsUI();
   } catch (err) {
-    statusText.innerText = 'Сервер перегружен. Нажмите «Повторить запрос».';
-    retryBtn.classList.remove('hidden');
+    if (statusText) statusText.innerText = 'Сервер перегружен. Нажмите «Повторить запрос».';
+    if (retryBtn) retryBtn.classList.remove('hidden');
   } finally {
-    submitSpeechBtn.disabled = false;
+    if (submitSpeechBtn) submitSpeechBtn.disabled = false;
   }
 }
 
-retryBtn.addEventListener('click', () => {
-  if (lastAction === 'generate') generateSentence();
-  else if (lastAction === 'check' && lastUserSpeech) checkTranslation(lastUserSpeech);
-});
+if (retryBtn) {
+  retryBtn.addEventListener('click', () => {
+    if (lastAction === 'generate') generateSentence();
+    else if (lastAction === 'check' && lastUserSpeech) checkTranslation(lastUserSpeech);
+  });
+}
 
 function addToHistory(sentence) {
   recentHistory.unshift(sentence);
@@ -523,23 +551,26 @@ function removeMistake(rus) {
 }
 
 function renderMistakes() {
+  if (!mistakesContainer || !mistakesList) return;
   if (mistakes.length > 0) {
     mistakesContainer.classList.remove('hidden');
     mistakesList.innerHTML = mistakes.map(m => `
-      <div class="mistake-item"><b>${m.rus}</b> → <i>${m.eng}</i></div>
+      <div class="mistake-item"><b>${escapeHtml(m.rus)}</b> → <i>${escapeHtml(m.eng)}</i></div>
     `).join('');
   } else {
     mistakesContainer.classList.add('hidden');
   }
 }
 
-clearMistakesBtn.addEventListener('click', () => {
-  mistakes = [];
-  localStorage.removeItem('mistakes');
-  renderMistakes();
-});
+if (clearMistakesBtn) {
+  clearMistakesBtn.addEventListener('click', () => {
+    mistakes = [];
+    localStorage.removeItem('mistakes');
+    renderMistakes();
+  });
+}
 
-// --- 2. КАРТОЧКИ (ИНТЕРВАЛЬНОЕ ПОВТОРЕНИЕ + PDF) ---
+// --- 2. КАРТОЧКИ: ДВА РЕЖИМА, ИИ-ГЕНЕРАТОР 20 КАРТОЧЕК + ЭКСПОРТ В PDF ---
 const pdfUpload = document.getElementById('pdf-upload');
 const pdfStatus = document.getElementById('pdf-status');
 const fcFront = document.getElementById('fc-front');
@@ -547,60 +578,382 @@ const fcBack = document.getElementById('fc-back');
 const fcToggleBtn = document.getElementById('fc-toggle-btn');
 const fcSpeakBtn = document.getElementById('fc-speak-btn');
 
-function saveFlashcards() {
+const modeAllBtn = document.getElementById('mode-all-btn');
+const modeDecksBtn = document.getElementById('mode-decks-btn');
+const decksSelectorBox = document.getElementById('decks-selector-box');
+const decksListContainer = document.getElementById('decks-list-container');
+const startDecksBtn = document.getElementById('start-decks-btn');
+
+const deckReportBox = document.getElementById('deck-report-box');
+const deckReportContent = document.getElementById('deck-report-content');
+const deckReportCloseBtn = document.getElementById('deck-report-close-btn');
+
+const aiDeckToggleBtn = document.getElementById('ai-deck-toggle-btn');
+const aiDeckPanel = document.getElementById('ai-deck-panel');
+const aiDeckTopic = document.getElementById('ai-deck-topic');
+const aiDeckGenerateBtn = document.getElementById('ai-deck-generate-btn');
+const aiDeckStatus = document.getElementById('ai-deck-status');
+
+function normalizeCard(c) {
+  return {
+    id: c.id || (Date.now() + Math.random()),
+    front: String(c.front || '').trim(),
+    back: String(c.back || '').trim(),
+    due: c.due || Date.now(),
+    difficulty: c.difficulty || 'hard'
+  };
+}
+
+flashcards = flashcards.map(normalizeCard).filter(c => c.front && c.back);
+
+function saveAllCardData() {
   localStorage.setItem('flashcards', JSON.stringify(flashcards));
+  localStorage.setItem('decks', JSON.stringify(decks));
   updateStatsUI();
 }
 
-function addFlashcard(front, back) {
-  if (!front || !back) return;
-  if (flashcards.some(c => c.front.toLowerCase() === front.toLowerCase())) return;
-  flashcards.push({
-    id: Date.now() + Math.random(),
-    front: front.trim(),
-    back: back.trim(),
-    due: Date.now()
+function addFlashcard(front, back, difficulty = 'hard') {
+  const f = String(front || '').trim();
+  const b = String(back || '').trim();
+  if (!f || !b) return null;
+
+  const existing = flashcards.find(c => c.front.toLowerCase() === f.toLowerCase());
+  if (existing) {
+    if (!existing.back && b) existing.back = b;
+    saveAllCardData();
+    return existing;
+  }
+
+  const card = normalizeCard({
+    id: `card_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+    front: f,
+    back: b,
+    due: Date.now(),
+    difficulty
   });
-  saveFlashcards();
+  flashcards.push(card);
+  saveAllCardData();
+  return card;
+}
+
+function registerDeck(title, sourceType, cardIds) {
+  const uniqueIds = Array.from(new Set(cardIds.filter(Boolean)));
+  if (!uniqueIds.length) return null;
+
+  const deck = {
+    id: `deck_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+    title: String(title || 'Набор карточек').trim(),
+    sourceType,
+    cardIds: uniqueIds,
+    createdAt: Date.now()
+  };
+  decks.unshift(deck);
+  saveAllCardData();
+  renderDecksList();
+  return deck;
+}
+
+function exportDeckToPdf(deckId) {
+  const deck = decks.find(d => d.id === deckId);
+  if (!deck) return;
+
+  const items = deck.cardIds
+    .map(id => flashcards.find(c => c.id === id))
+    .filter(Boolean);
+
+  if (!items.length) return;
+
+  let sheet = document.getElementById('printable-deck-sheet');
+  if (!sheet) {
+    sheet = document.createElement('div');
+    sheet.id = 'printable-deck-sheet';
+    document.body.appendChild(sheet);
+  }
+
+  sheet.innerHTML = `
+    <h2>${escapeHtml(deck.title)}</h2>
+    <p>Карточек: ${items.length}</p>
+    <table border="1" cellpadding="8" cellspacing="0" style="width:100%;border-collapse:collapse;">
+      <thead>
+        <tr>
+          <th style="text-align:left;">Слово / фраза</th>
+          <th style="text-align:left;">Перевод / пояснение</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${items.map(it => `
+          <tr>
+            <td>${escapeHtml(it.front)}</td>
+            <td>${escapeHtml(it.back)}</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  `;
+
+  window.print();
+}
+
+function renderDecksList() {
+  if (!decksListContainer) return;
+
+  if (!decks.length) {
+    decksListContainer.innerHTML = '<div class="small-note">Пока нет загруженных PDF или сгенерированных наборов. Загрузите PDF или нажмите «Сгенерировать 20 карточек».</div>';
+    return;
+  }
+
+  decksListContainer.innerHTML = decks.map(deck => {
+    const checked = activeSessionDeckIds.includes(deck.id) ? 'checked' : '';
+    const badge = deck.sourceType === 'ai' ? 'ИИ-набор' : 'PDF';
+    const pdfBtn = deck.sourceType === 'ai'
+      ? `<button type="button" class="secondary-action-btn export-pdf-btn" data-deck-id="${escapeHtml(deck.id)}">PDF</button>`
+      : '';
+
+    return `
+      <div class="deck-item">
+        <label>
+          <input type="checkbox" class="deck-checkbox" value="${escapeHtml(deck.id)}" ${checked} />
+          <span><b>${escapeHtml(deck.title)}</b> (${badge}, ${deck.cardIds.length} шт.)</span>
+        </label>
+        ${pdfBtn}
+      </div>
+    `;
+  }).join('');
+
+  decksListContainer.querySelectorAll('.export-pdf-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      exportDeckToPdf(btn.getAttribute('data-deck-id'));
+    });
+  });
+}
+
+function setCardMode(nextMode) {
+  cardMode = nextMode;
+  if (modeAllBtn) modeAllBtn.classList.toggle('active', cardMode === 'all');
+  if (modeDecksBtn) modeDecksBtn.classList.toggle('active', cardMode === 'decks');
+  if (decksSelectorBox) decksSelectorBox.classList.toggle('hidden', cardMode !== 'decks');
+  if (deckReportBox) deckReportBox.classList.add('hidden');
+
+  if (cardMode === 'decks') {
+    renderDecksList();
+    if (!activeSessionQueue.length) {
+      currentCard = null;
+      if (fcFront) fcFront.innerText = 'Выберите один или несколько наборов/PDF и нажмите «Начать по выбранным»';
+      if (fcBack) {
+        fcBack.innerText = '';
+        fcBack.classList.add('hidden');
+      }
+    } else {
+      renderNextFlashcard();
+    }
+  } else {
+    renderNextFlashcard();
+  }
+}
+
+if (modeAllBtn) modeAllBtn.addEventListener('click', () => setCardMode('all'));
+if (modeDecksBtn) modeDecksBtn.addEventListener('click', () => setCardMode('decks'));
+
+function pickNextAllModeCard() {
+  if (!flashcards.length) return null;
+
+  const isHardOrAgain = (c) => c.difficulty === 'hard' || c.difficulty === 'again';
+  const isEasy = (c) => c.difficulty === 'easy';
+
+  const allEasy = flashcards.every(isEasy);
+  if (allEasy) {
+    if (allModeSeenIds.size >= flashcards.length) {
+      allModeSeenIds.clear();
+      hardStreakCount = 0;
+      flashcards.forEach(c => {
+        c.due = Date.now();
+      });
+      saveAllCardData();
+      if (pdfStatus) {
+        pdfStatus.innerText = 'Все лёгкие карточки пройдены — запускаю новый круг повторения лёгких слов!';
+      }
+    }
+    const unseenEasy = flashcards.filter(c => !allModeSeenIds.has(c.id));
+    const pool = unseenEasy.length ? unseenEasy : flashcards;
+    return pool[Math.floor(Math.random() * pool.length)];
+  }
+
+  const hardPool = flashcards.filter(isHardOrAgain);
+  const easyPool = flashcards.filter(isEasy);
+
+  if (hardStreakCount >= 5 && easyPool.length > 0) {
+    hardStreakCount = 0;
+    const unseenEasy = easyPool.filter(c => !allModeSeenIds.has(c.id));
+    const chosenEasyPool = unseenEasy.length ? unseenEasy : easyPool;
+    return chosenEasyPool[Math.floor(Math.random() * chosenEasyPool.length)];
+  }
+
+  if (hardPool.length > 0) {
+    const unseenHard = hardPool.filter(c => !allModeSeenIds.has(c.id));
+    const chosenHardPool = unseenHard.length ? unseenHard : hardPool;
+    const picked = chosenHardPool[Math.floor(Math.random() * chosenHardPool.length)];
+    hardStreakCount++;
+    return picked;
+  }
+
+  const unseenAny = flashcards.filter(c => !allModeSeenIds.has(c.id));
+  const fallbackPool = unseenAny.length ? unseenAny : flashcards;
+  return fallbackPool[Math.floor(Math.random() * fallbackPool.length)];
+}
+
+function showDeckSessionReport() {
+  if (!deckReportBox || !deckReportContent) return;
+  const totalReviewed = activeSessionReport.easy + activeSessionReport.hard + activeSessionReport.again;
+  deckReportContent.innerHTML = `
+    <div>Пройдено карточек: <b>${totalReviewed}</b> из <b>${activeSessionTotal}</b></div>
+    <div class="deck-report-stats">
+      <span>🟢 Легко: ${activeSessionReport.easy}</span>
+      <span>🟠 Трудно: ${activeSessionReport.hard}</span>
+      <span>🔴 Не помню: ${activeSessionReport.again}</span>
+    </div>
+    <div class="small-note">Можете снова отметить наборы и запустить тренировку заново.</div>
+  `;
+  deckReportBox.classList.remove('hidden');
+}
+
+if (deckReportCloseBtn && deckReportBox) {
+  deckReportCloseBtn.addEventListener('click', () => {
+    deckReportBox.classList.add('hidden');
+  });
+}
+
+if (startDecksBtn) {
+  startDecksBtn.addEventListener('click', () => {
+    const checkedIds = Array.from(document.querySelectorAll('.deck-checkbox:checked')).map(el => el.value);
+    if (!checkedIds.length) {
+      if (pdfStatus) pdfStatus.innerText = 'Отметьте хотя бы один PDF или ИИ-набор.';
+      return;
+    }
+
+    activeSessionDeckIds = checkedIds;
+    const cardIdSet = new Set();
+    decks
+      .filter(d => checkedIds.includes(d.id))
+      .forEach(d => d.cardIds.forEach(id => cardIdSet.add(id)));
+
+    activeSessionQueue = Array.from(cardIdSet)
+      .map(id => flashcards.find(c => c.id === id))
+      .filter(Boolean);
+
+    activeSessionTotal = activeSessionQueue.length;
+    activeSessionReport = { easy: 0, hard: 0, again: 0 };
+    if (deckReportBox) deckReportBox.classList.add('hidden');
+
+    if (!activeSessionQueue.length) {
+      currentCard = null;
+      if (fcFront) fcFront.innerText = 'В выбранных наборах нет карточек';
+      if (fcBack) fcBack.classList.add('hidden');
+      return;
+    }
+
+    renderNextFlashcard();
+  });
 }
 
 function renderNextFlashcard() {
   updateStatsUI();
-  const now = Date.now();
-  const dueCards = flashcards.filter(c => c.due <= now);
-  const pool = dueCards.length ? dueCards : flashcards;
 
-  if (!pool.length) {
-    currentCard = null;
-    fcFront.innerText = 'Карточек пока нет';
-    fcBack.innerText = '';
-    fcBack.classList.add('hidden');
+  if (cardMode === 'decks') {
+    if (!activeSessionQueue.length) {
+      currentCard = null;
+      if (fcFront) fcFront.innerText = activeSessionTotal > 0 ? 'Пачка пройдена! Смотрите отчёт ниже.' : 'Карточек пока нет';
+      if (fcBack) {
+        fcBack.innerText = '';
+        fcBack.classList.add('hidden');
+      }
+      if (activeSessionTotal > 0) showDeckSessionReport();
+      return;
+    }
+
+    currentCard = activeSessionQueue[0];
+    if (fcFront) fcFront.innerText = currentCard.front;
+    if (fcBack) {
+      fcBack.innerText = currentCard.back;
+      fcBack.classList.add('hidden');
+    }
     return;
   }
 
-  currentCard = pool[0];
-  fcFront.innerText = currentCard.front;
-  fcBack.innerText = currentCard.back;
-  fcBack.classList.add('hidden');
+  if (!flashcards.length) {
+    currentCard = null;
+    if (fcFront) fcFront.innerText = 'Карточек пока нет';
+    if (fcBack) {
+      fcBack.innerText = '';
+      fcBack.classList.add('hidden');
+    }
+    return;
+  }
+
+  currentCard = pickNextAllModeCard();
+  if (currentCard) {
+    if (fcFront) fcFront.innerText = currentCard.front;
+    if (fcBack) {
+      fcBack.innerText = currentCard.back;
+      fcBack.classList.add('hidden');
+    }
+  }
 }
 
-fcToggleBtn.addEventListener('click', () => {
-  if (!currentCard) return;
-  fcBack.classList.toggle('hidden');
-});
+if (fcToggleBtn) {
+  fcToggleBtn.addEventListener('click', () => {
+    if (!currentCard || !fcBack) return;
+    fcBack.classList.toggle('hidden');
+  });
+}
 
-fcSpeakBtn.addEventListener('click', () => {
-  if (!currentCard) return;
-  speakEnglish(currentCard.front);
-});
+if (fcSpeakBtn) {
+  fcSpeakBtn.addEventListener('click', () => {
+    if (!currentCard) return;
+    speakEnglish(currentCard.front);
+  });
+}
 
 document.querySelectorAll('.rate-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     if (!currentCard) return;
     const rate = btn.getAttribute('data-rate');
-    const minutes = rate === 'again' ? 1 : rate === 'hard' ? 30 : 1440;
-    currentCard.due = Date.now() + minutes * 60 * 1000;
-    saveFlashcards();
+
+    if (rate === 'easy') {
+      currentCard.difficulty = 'easy';
+      currentCard.due = Date.now() + 24 * 60 * 60 * 1000;
+    } else if (rate === 'hard') {
+      currentCard.difficulty = 'hard';
+      currentCard.due = Date.now() + 10 * 60 * 1000;
+    } else {
+      currentCard.difficulty = 'again';
+      currentCard.due = Date.now() + 60 * 1000;
+    }
+
+    if (cardMode === 'decks') {
+      if (rate === 'easy') activeSessionReport.easy++;
+      else if (rate === 'hard') activeSessionReport.hard++;
+      else activeSessionReport.again++;
+
+      const finishedCard = activeSessionQueue.shift();
+      if (finishedCard && (rate === 'again' || rate === 'hard') && !finishedCard._requeuedInSession) {
+        finishedCard._requeuedInSession = true;
+        activeSessionQueue.push(finishedCard);
+      }
+
+      saveAllCardData();
+      renderNextFlashcard();
+      return;
+    }
+
+    allModeSeenIds.add(currentCard.id);
+    if (allModeSeenIds.size >= flashcards.length && flashcards.every(c => c.difficulty === 'easy')) {
+      allModeSeenIds.clear();
+      hardStreakCount = 0;
+    }
+
+    saveAllCardData();
     renderNextFlashcard();
   });
 });
@@ -661,67 +1014,146 @@ function extractFallbackPairsFromText(rawText) {
   return pairs.slice(0, 20);
 }
 
-pdfUpload.addEventListener('change', async (e) => {
-  const file = e.target.files[0];
-  if (!file || !window.pdfjsLib) return;
+if (pdfUpload) {
+  pdfUpload.addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file || !window.pdfjsLib) return;
 
-  pdfStatus.innerText = 'Читаю PDF-файл...';
-  let extracted = '';
+    if (pdfStatus) pdfStatus.innerText = 'Читаю PDF-файл...';
+    let extracted = '';
 
-  try {
-    const buffer = await file.arrayBuffer();
-    const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
-    const pagesToRead = Math.min(pdf.numPages, 6);
-    for (let i = 1; i <= pagesToRead; i++) {
-      const page = await pdf.getPage(i);
-      const content = await page.getTextContent();
-      extracted += content.items.map(item => item.str).join(' ') + '\n';
-    }
-
-    const clipped = extracted.slice(0, 2600);
-    pdfStatus.innerText = 'ИИ формирует карточки слов...';
-
-    const raw = await callGemini(
-      `Извлеки пары английское слово/фраза и перевод на русский (до 20 пар). Верни ТОЛЬКО валидный JSON-массив [{"en":"...","ru":"..."}] без переносов строк внутри значений и без пояснений:\n${clipped}`,
-      1200,
-      0.3
-    );
-
-    const list = parsePartialJsonCards(raw);
-    let added = 0;
-    list.forEach(item => {
-      if (item && item.en && item.ru) {
-        addFlashcard(item.en, item.ru);
-        added++;
+    try {
+      const buffer = await file.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
+      const pagesToRead = Math.min(pdf.numPages, 6);
+      for (let i = 1; i <= pagesToRead; i++) {
+        const page = await pdf.getPage(i);
+        const content = await page.getTextContent();
+        extracted += content.items.map(item => item.str).join(' ') + '\n';
       }
-    });
 
-    pdfStatus.innerText = `Добавлено карточек: ${added}`;
-    renderNextFlashcard();
-  } catch (err) {
-    const fallbackPairs = extractFallbackPairsFromText(extracted);
-    if (fallbackPairs.length > 0) {
-      let added = 0;
-      fallbackPairs.forEach(item => {
-        addFlashcard(item.en, item.ru);
-        added++;
+      const clipped = extracted.slice(0, 2600);
+      if (pdfStatus) pdfStatus.innerText = 'ИИ формирует карточки слов...';
+
+      const raw = await callGemini(
+        `Извлеки пары английское слово/фраза и перевод на русский (до 20 пар). Верни ТОЛЬКО валидный JSON-массив [{"en":"...","ru":"..."}] без переносов строк внутри значений и без пояснений:\n${clipped}`,
+        1200,
+        0.3
+      );
+
+      const list = parsePartialJsonCards(raw);
+      const addedIds = [];
+      list.forEach(item => {
+        if (item && item.en && item.ru) {
+          const card = addFlashcard(item.en, item.ru, 'hard');
+          if (card) addedIds.push(card.id);
+        }
       });
-      pdfStatus.innerText = `ИИ был перегружен, но собрано карточек напрямую из PDF: ${added}`;
-      renderNextFlashcard();
-    } else {
-      pdfStatus.innerText = `Сервер ИИ сейчас перегружен (${err.message}). Повторите через 10–15 секунд.`;
-    }
-  } finally {
-    e.target.value = '';
-  }
-});
 
-// --- 3. ДИАЛОГ (МИНИМАЛЬНЫЙ КОНТЕКСТ И КОРОТКИЕ ОТВЕТЫ) ---
+      if (addedIds.length) {
+        registerDeck(file.name.replace(/\.pdf$/i, ''), 'pdf', addedIds);
+      }
+
+      if (pdfStatus) pdfStatus.innerText = `Добавлено карточек: ${addedIds.length} (всего в базе: ${flashcards.length})`;
+      renderNextFlashcard();
+    } catch (err) {
+      const fallbackPairs = extractFallbackPairsFromText(extracted);
+      if (fallbackPairs.length > 0) {
+        const addedIds = [];
+        fallbackPairs.forEach(item => {
+          const card = addFlashcard(item.en, item.ru, 'hard');
+          if (card) addedIds.push(card.id);
+        });
+        if (addedIds.length) {
+          registerDeck(file.name.replace(/\.pdf$/i, ''), 'pdf', addedIds);
+        }
+        if (pdfStatus) pdfStatus.innerText = `ИИ был перегружен, но собрано карточек напрямую из PDF: ${addedIds.length}`;
+        renderNextFlashcard();
+      } else if (pdfStatus) {
+        pdfStatus.innerText = `Сервер ИИ сейчас перегружен (${err.message}). Повторите через 10–15 секунд.`;
+      }
+    } finally {
+      e.target.value = '';
+    }
+  });
+}
+
+if (aiDeckToggleBtn && aiDeckPanel) {
+  aiDeckToggleBtn.addEventListener('click', () => {
+    aiDeckPanel.classList.toggle('hidden');
+    if (!aiDeckPanel.classList.contains('hidden') && aiDeckTopic) {
+      aiDeckTopic.focus();
+    }
+  });
+}
+
+if (aiDeckGenerateBtn) {
+  aiDeckGenerateBtn.addEventListener('click', async () => {
+    const topicOrText = (aiDeckTopic && aiDeckTopic.value.trim()) || '';
+    if (!topicOrText) {
+      if (aiDeckStatus) aiDeckStatus.innerText = 'Введите тему или текст, по которым нужно сделать 20 карточек.';
+      return;
+    }
+
+    aiDeckGenerateBtn.disabled = true;
+    if (aiDeckStatus) aiDeckStatus.innerText = 'Генерирую 20 карточек...';
+
+    try {
+      const prompt = `Создай ровно 20 учебных карточек (английское слово или короткая фраза + перевод на русский) по теме или тексту ниже. Уровень: ${selectedLevel}.
+Материал:
+${topicOrText.slice(0, 2400)}
+
+Верни ТОЛЬКО валидный JSON-массив из 20 объектов [{"en":"...","ru":"..."}] без пояснений и без markdown-оформления.`;
+
+      const raw = await callGemini(prompt, 1400, 0.5);
+      const parsed = parsePartialJsonCards(raw).slice(0, 20);
+
+      if (!parsed.length) {
+        throw new Error('Не удалось сформировать карточки');
+      }
+
+      const addedIds = [];
+      parsed.forEach(item => {
+        if (item && item.en && item.ru) {
+          const card = addFlashcard(item.en, item.ru, 'hard');
+          if (card) addedIds.push(card.id);
+        }
+      });
+
+      const shortTitle = topicOrText.split(/\r?\n/)[0].slice(0, 42);
+      const createdDeck = registerDeck(`ИИ: ${shortTitle || 'Набор 20'}`, 'ai', addedIds);
+
+      if (aiDeckStatus) {
+        aiDeckStatus.innerText = `Готово! Создано карточек: ${addedIds.length}. Набор добавлен в список — можно сразу запустить или скачать в PDF.`;
+      }
+      if (createdDeck && cardMode === 'decks') {
+        activeSessionDeckIds = [createdDeck.id];
+        renderDecksList();
+      }
+      renderNextFlashcard();
+    } catch (err) {
+      if (aiDeckStatus) {
+        aiDeckStatus.innerText = `Не удалось сгенерировать набор (${err.message}). Попробуйте ещё раз.`;
+      }
+    } finally {
+      aiDeckGenerateBtn.disabled = false;
+    }
+  });
+}
+
+// --- 3. ДИАЛОГ (СВОЯ ТЕМА ИЛИ СЦЕНАРИЙ + МИНИМАЛЬНЫЙ КОНТЕКСТ) ---
 const scenarioSelect = document.getElementById('scenario-select');
+const dialogCustomTopic = document.getElementById('dialog-custom-topic');
 const startDialogBtn = document.getElementById('start-dialog-btn');
 const chatBox = document.getElementById('chat-box');
 const dialogInput = document.getElementById('dialog-input');
 const sendDialogBtn = document.getElementById('send-dialog-btn');
+
+function getActiveDialogTopic() {
+  const custom = dialogCustomTopic ? dialogCustomTopic.value.trim() : '';
+  if (custom) return custom;
+  return scenarioSelect ? scenarioSelect.value : 'Свободный разговор';
+}
 
 function escapeHtml(str) {
   return String(str)
@@ -732,75 +1164,59 @@ function escapeHtml(str) {
 }
 
 function renderDialog() {
+  if (!chatBox) return;
   if (!dialogHistory.length) {
-    chatBox.innerHTML = '<div class="small-note">Нажмите «Начать новый диалог», чтобы ИИ задал первый вопрос.</div>';
+    chatBox.innerHTML = '<div class="small-note">Выберите сценарий или напишите свою тему (простую бытовую или любую другую) и нажмите «Начать новый диалог».</div>';
     return;
   }
-  chatBox.innerHTML = dialogHistory.map((m, idx) => {
+  chatBox.innerHTML = dialogHistory.map(m => {
     const tipHtml = m.tip ? `<div class="chat-tip">💡 ${escapeHtml(m.tip)}</div>` : '';
-    const speakHtml = m.role === 'ai'
-      ? `<button type="button" class="chat-speak-btn" data-msg-index="${idx}" title="Озвучить реплику">🔊</button>`
-      : '';
-    return `
-      <div class="chat-msg ${m.role}">
-        <div class="chat-msg-top">
-          <span>${escapeHtml(m.text)}</span>
-          ${speakHtml}
-        </div>
-        ${tipHtml}
-      </div>
-    `;
+    return `<div class="chat-msg ${m.role}">${escapeHtml(m.text)}${tipHtml}</div>`;
   }).join('');
-
-  chatBox.querySelectorAll('.chat-speak-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const idx = parseInt(btn.getAttribute('data-msg-index'), 10);
-      const item = dialogHistory[idx];
-      if (item && item.text) speakEnglish(item.text);
-    });
-  });
-
   chatBox.scrollTop = chatBox.scrollHeight;
 }
 
-startDialogBtn.addEventListener('click', async () => {
-  const scenario = scenarioSelect.value;
-  dialogHistory = [];
-  startDialogBtn.disabled = true;
-  chatBox.innerHTML = '<div class="small-note">Собеседник подключается...</div>';
+if (startDialogBtn) {
+  startDialogBtn.addEventListener('click', async () => {
+    const scenario = getActiveDialogTopic();
+    dialogHistory = [];
+    startDialogBtn.disabled = true;
+    if (chatBox) chatBox.innerHTML = '<div class="small-note">Собеседник подключается...</div>';
 
-  try {
-    const opener = await callGemini(
-      `Ролевая игра: "${scenario}", уровень ${selectedLevel}. Начни диалог 1 короткой фразой на английском.`,
-      65,
-      0.85
-    );
-    dialogHistory.push({ role: 'ai', text: opener });
-    renderDialog();
-    speakEnglish(opener);
-  } catch (err) {
-    chatBox.innerHTML = `<div class="small-note">${escapeHtml(err.message)}</div>`;
-  } finally {
-    startDialogBtn.disabled = false;
-  }
-});
+    try {
+      const opener = await callGemini(
+        `Ролевая игра / тема: "${scenario}", уровень ${selectedLevel}. Начни диалог 1 короткой естественной фразой на английском.`,
+        65,
+        0.85
+      );
+      dialogHistory.push({ role: 'ai', text: opener });
+      renderDialog();
+      speakEnglish(opener);
+    } catch (err) {
+      if (chatBox) chatBox.innerHTML = `<div class="small-note">${escapeHtml(err.message)}</div>`;
+    } finally {
+      startDialogBtn.disabled = false;
+    }
+  });
+}
 
 async function sendDialogReply() {
-  const text = dialogInput.value.trim();
+  const text = dialogInput ? dialogInput.value.trim() : '';
   if (!text) return;
-  dialogInput.value = '';
+  if (dialogInput) dialogInput.value = '';
   dialogHistory.push({ role: 'user', text });
   renderDialog();
 
+  const scenario = getActiveDialogTopic();
   const shortContext = dialogHistory
     .slice(-4)
     .map(m => `${m.role === 'ai' ? 'AI' : 'User'}: ${m.text}`)
     .join('\n');
 
-  sendDialogBtn.disabled = true;
+  if (sendDialogBtn) sendDialogBtn.disabled = true;
   try {
     const raw = await callGemini(
-      `Сценарий: "${scenarioSelect.value}", уровень ${selectedLevel}. Контекст:\n${shortContext}\nОтветь в 2 строках:\nAI: [1-2 коротких предложения на английском]\nTIP: [короткая подсказка на русском или "ок"]`,
+      `Тема/сценарий: "${scenario}", уровень ${selectedLevel}. Контекст:\n${shortContext}\nОтветь в 2 строках:\nAI: [1-2 коротких предложения на английском]\nTIP: [короткая подсказка на русском или "ок"]`,
       140,
       0.8
     );
@@ -817,17 +1233,19 @@ async function sendDialogReply() {
     dialogHistory.push({ role: 'ai', text: err.message });
     renderDialog();
   } finally {
-    sendDialogBtn.disabled = false;
+    if (sendDialogBtn) sendDialogBtn.disabled = false;
   }
 }
 
-sendDialogBtn.addEventListener('click', sendDialogReply);
-dialogInput.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') sendDialogReply();
-});
+if (sendDialogBtn) sendDialogBtn.addEventListener('click', sendDialogReply);
+if (dialogInput) {
+  dialogInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') sendDialogReply();
+  });
+}
 
 function updateStatsUI() {
-  streakCountElem.innerText = streak;
-  totalCountElem.innerText = total;
-  cardsCountElem.innerText = flashcards.length;
+  if (streakCountElem) streakCountElem.innerText = streak;
+  if (totalCountElem) totalCountElem.innerText = total;
+  if (cardsCountElem) cardsCountElem.innerText = flashcards.length;
 }
