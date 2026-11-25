@@ -74,7 +74,11 @@ let recentHistory = JSON.parse(localStorage.getItem('recentHistory') || '[]');
 let flashcards = JSON.parse(localStorage.getItem('flashcards') || '[]');
 
 let isRecording = false;
+let manualStopRequested = false;
 let recognition = null;
+let finalTranscriptBuffer = '';
+let latestInterimBuffer = '';
+
 let currentRussianSentence = '';
 let currentEnglishTranslation = '';
 let lastAction = null;
@@ -86,46 +90,215 @@ let dialogHistory = [];
 updateStatsUI();
 renderMistakes();
 
-// Распознавание речи
+// --- ПОДБОР МЯГКОГО ЖЕНСКОГО ГОЛОСА ОЗВУЧКИ ---
+let availableVoices = [];
+
+function refreshVoices() {
+  if (!('speechSynthesis' in window)) return;
+  availableVoices = window.speechSynthesis.getVoices() || [];
+}
+
+if ('speechSynthesis' in window) {
+  refreshVoices();
+  window.speechSynthesis.onvoiceschanged = refreshVoices;
+}
+
+function selectSmoothFemaleVoice() {
+  if (!availableVoices.length) refreshVoices();
+  if (!availableVoices.length) return null;
+
+  const enVoices = availableVoices.filter(v => /^en[-_]/i.test(v.lang));
+  const pool = enVoices.length ? enVoices : availableVoices;
+
+  const preferredPatterns = [
+    /samantha/i,
+    /victoria/i,
+    /karen/i,
+    /moira/i,
+    /tessa/i,
+    /fiona/i,
+    /google uk english female/i,
+    /google us english/i,
+    /aria/i,
+    /jenny/i,
+    /sonia/i,
+    /zira/i,
+    /female/i,
+    /woman/i
+  ];
+
+  for (const pattern of preferredPatterns) {
+    const match = pool.find(v => pattern.test(v.name));
+    if (match) return match;
+  }
+
+  return pool.find(v => /en-US|en-GB/i.test(v.lang)) || pool[0];
+}
+
+function speakEnglish(text) {
+  const cleanText = (text || '').trim();
+  if (!cleanText || !('speechSynthesis' in window)) return;
+
+  try {
+    window.speechSynthesis.cancel();
+  } catch (e) {}
+
+  const utterance = new SpeechSynthesisUtterance(cleanText);
+  const voice = selectSmoothFemaleVoice();
+  if (voice) {
+    utterance.voice = voice;
+    utterance.lang = voice.lang || 'en-US';
+  } else {
+    utterance.lang = 'en-US';
+  }
+
+  utterance.rate = 0.9;
+  utterance.pitch = 1.06;
+  utterance.volume = 1.0;
+
+  window.speechSynthesis.speak(utterance);
+}
+
+// --- РУЧНОЙ TOGGLE-МИКРОФОН И УЛУЧШЕННОЕ РАСПОЗНАВАНИЕ ---
 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+function getCombinedTranscript() {
+  return `${finalTranscriptBuffer} ${latestInterimBuffer}`.replace(/\s+/g, ' ').trim();
+}
+
+function pickBestAlternative(result) {
+  let best = result[0];
+  for (let i = 1; i < result.length; i++) {
+    if ((result[i].confidence || 0) > (best.confidence || 0)) {
+      best = result[i];
+    }
+  }
+  return best ? best.transcript.trim() : '';
+}
 
 if (SpeechRecognition) {
   recognition = new SpeechRecognition();
   recognition.lang = 'en-US';
-  recognition.interimResults = false;
+  recognition.continuous = true;
+  recognition.interimResults = true;
+  recognition.maxAlternatives = 3;
 
   recognition.onstart = () => {
     isRecording = true;
+    manualStopRequested = false;
+    finalTranscriptBuffer = '';
+    latestInterimBuffer = '';
     micBtn.classList.add('recording');
-    statusText.innerText = 'Слушаю... Говорите по-английски';
+    statusText.innerText = 'Запись включена. Нажмите на микрофон ещё раз, чтобы остановить.';
   };
 
   recognition.onresult = (event) => {
-    const transcript = event.results[0][0].transcript;
-    stopMic();
-    openSpeechEditor(transcript);
-    statusText.innerText = 'Проверьте текст ниже. При необходимости измените и нажмите «Готово».';
-  };
+    let finalChunk = '';
+    let interimChunk = '';
 
-  recognition.onerror = () => {
-    statusText.innerText = 'Ошибка микрофона. Попробуйте снова или отредактируйте текст вручную.';
-    stopMic();
-    if (currentRussianSentence) {
-      openSpeechEditor(speechInput.value || '');
+    for (let i = event.resultIndex; i < event.results.length; i++) {
+      const phrase = pickBestAlternative(event.results[i]);
+      if (!phrase) continue;
+      if (event.results[i].isFinal) {
+        finalChunk += (finalChunk ? ' ' : '') + phrase;
+      } else {
+        interimChunk += (interimChunk ? ' ' : '') + phrase;
+      }
+    }
+
+    if (finalChunk) {
+      finalTranscriptBuffer = `${finalTranscriptBuffer} ${finalChunk}`.trim();
+      latestInterimBuffer = '';
+    } else {
+      latestInterimBuffer = interimChunk;
+    }
+
+    const preview = getCombinedTranscript();
+    if (preview) {
+      speechInput.value = preview;
+      speechEditCard.classList.remove('hidden');
+      statusText.innerText = 'Распознаю... Нажмите на микрофон снова, когда закончите.';
     }
   };
 
-  recognition.onend = () => stopMic();
+  recognition.onerror = (event) => {
+    const errCode = event?.error || '';
+    const collected = getCombinedTranscript() || speechInput.value.trim();
+
+    isRecording = false;
+    micBtn.classList.remove('recording');
+
+    if (manualStopRequested && collected) {
+      openSpeechEditor(collected);
+      statusText.innerText = 'Запись остановлена. Проверьте текст и нажмите «Готово».';
+      return;
+    }
+
+    if (errCode === 'not-allowed' || errCode === 'service-not-allowed') {
+      statusText.innerText = 'Доступ к микрофону запрещён. Разрешите его в настройках браузера или введите текст вручную.';
+    } else if (errCode === 'no-speech') {
+      statusText.innerText = 'Речь не уловлена. Нажмите на микрофон, скажите фразу и нажмите снова для остановки.';
+    } else {
+      statusText.innerText = 'Сбой распознавания. Проверьте текст ниже или введите вручную.';
+    }
+
+    if (currentRussianSentence) {
+      openSpeechEditor(collected);
+    }
+  };
+
+  recognition.onend = () => {
+    const collected = getCombinedTranscript();
+    isRecording = false;
+    micBtn.classList.remove('recording');
+
+    if (manualStopRequested) {
+      manualStopRequested = false;
+      const finalText = collected || speechInput.value.trim();
+      if (finalText) {
+        openSpeechEditor(finalText);
+        statusText.innerText = 'Запись выключена. Проверьте текст и нажмите «Готово».';
+      } else if (currentRussianSentence) {
+        openSpeechEditor('');
+        statusText.innerText = 'Ничего не распознано. Попробуйте ещё раз или введите текст вручную.';
+      }
+      return;
+    }
+
+    if (collected) {
+      openSpeechEditor(collected);
+      statusText.innerText = 'Проверьте распознанный текст и нажмите «Готово».';
+    }
+  };
 } else {
   statusText.innerText = 'Голосовой ввод не поддерживается — используйте ручной ввод.';
 }
 
-function stopMic() {
+function stopMicManual() {
+  manualStopRequested = true;
   isRecording = false;
   micBtn.classList.remove('recording');
+
+  const collected = getCombinedTranscript();
+  if (collected) {
+    openSpeechEditor(collected);
+  }
+
   if (recognition) {
     try {
       recognition.stop();
+    } catch (e) {}
+  }
+}
+
+function resetMicState() {
+  manualStopRequested = false;
+  isRecording = false;
+  finalTranscriptBuffer = '';
+  latestInterimBuffer = '';
+  micBtn.classList.remove('recording');
+  if (recognition) {
+    try {
       recognition.abort();
     } catch (e) {}
   }
@@ -161,22 +334,19 @@ submitSpeechBtn.addEventListener('click', () => {
 micBtn.addEventListener('click', () => {
   if (!recognition) return;
   if (isRecording) {
-    stopMic();
+    stopMicManual();
   } else {
     feedbackBox.classList.add('hidden');
     retryBtn.classList.add('hidden');
-    recognition.start();
+    speechInput.value = '';
+    try {
+      recognition.start();
+    } catch (e) {
+      resetMicState();
+      recognition.start();
+    }
   }
 });
-
-function speakEnglish(text) {
-  if (!text || !('speechSynthesis' in window)) return;
-  window.speechSynthesis.cancel();
-  const utterance = new SpeechSynthesisUtterance(text);
-  utterance.lang = 'en-US';
-  utterance.rate = 0.92;
-  window.speechSynthesis.speak(utterance);
-}
 
 speakBtn.addEventListener('click', () => speakEnglish(currentEnglishTranslation));
 
@@ -210,6 +380,7 @@ async function callGemini(promptText, maxTokens = 160, temperature = 0.85) {
 async function generateSentence() {
   lastAction = 'generate';
   alreadyCountedForCurrent = false;
+  resetMicState();
   const userTopic = topicInput.value.trim() || 'Путешествия';
 
   statusText.innerText = 'Генерирую предложение...';
@@ -221,13 +392,12 @@ async function generateSentence() {
   manualInputBtn.classList.add('hidden');
   retryBtn.classList.add('hidden');
 
-  // Шанс 20%: повторить ошибку из списка
   if (mistakes.length > 0 && Math.random() < 0.2) {
     const randomMistake = mistakes[Math.floor(Math.random() * mistakes.length)];
     currentRussianSentence = randomMistake.rus;
     currentEnglishTranslation = randomMistake.eng;
     targetSentence.innerText = `[Повторение] ${currentRussianSentence}`;
-    statusText.innerText = 'Закрепляем известную ошибку! Нажмите на микрофон или введите текст';
+    statusText.innerText = 'Закрепляем известную ошибку! Нажмите на микрофон для старта/стопа или введите текст';
     micBtn.disabled = false;
     manualInputBtn.classList.remove('hidden');
     speakBtn.classList.remove('hidden');
@@ -254,7 +424,7 @@ async function generateSentence() {
       currentEnglishTranslation = engMatch[1].trim();
       addToHistory(currentRussianSentence);
       targetSentence.innerText = currentRussianSentence;
-      statusText.innerText = 'Нажмите на микрофон и произнесите перевод';
+      statusText.innerText = 'Нажмите на микрофон для записи, затем нажмите ещё раз для остановки';
       micBtn.disabled = false;
       manualInputBtn.classList.remove('hidden');
       speakBtn.classList.remove('hidden');
@@ -262,7 +432,7 @@ async function generateSentence() {
       currentRussianSentence = result;
       currentEnglishTranslation = '';
       targetSentence.innerText = result;
-      statusText.innerText = 'Нажмите на микрофон';
+      statusText.innerText = 'Нажмите на микрофон для старта/стопа';
       micBtn.disabled = false;
       manualInputBtn.classList.remove('hidden');
     }
@@ -484,15 +654,43 @@ const chatBox = document.getElementById('chat-box');
 const dialogInput = document.getElementById('dialog-input');
 const sendDialogBtn = document.getElementById('send-dialog-btn');
 
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
 function renderDialog() {
   if (!dialogHistory.length) {
     chatBox.innerHTML = '<div class="small-note">Нажмите «Начать новый диалог», чтобы ИИ задал первый вопрос.</div>';
     return;
   }
-  chatBox.innerHTML = dialogHistory.map(m => {
-    const tipHtml = m.tip ? `<div class="chat-tip">💡 ${m.tip}</div>` : '';
-    return `<div class="chat-msg ${m.role}">${m.text}${tipHtml}</div>`;
+  chatBox.innerHTML = dialogHistory.map((m, idx) => {
+    const tipHtml = m.tip ? `<div class="chat-tip">💡 ${escapeHtml(m.tip)}</div>` : '';
+    const speakHtml = m.role === 'ai'
+      ? `<button type="button" class="chat-speak-btn" data-msg-index="${idx}" title="Озвучить реплику">🔊</button>`
+      : '';
+    return `
+      <div class="chat-msg ${m.role}">
+        <div class="chat-msg-top">
+          <span>${escapeHtml(m.text)}</span>
+          ${speakHtml}
+        </div>
+        ${tipHtml}
+      </div>
+    `;
   }).join('');
+
+  chatBox.querySelectorAll('.chat-speak-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const idx = parseInt(btn.getAttribute('data-msg-index'), 10);
+      const item = dialogHistory[idx];
+      if (item && item.text) speakEnglish(item.text);
+    });
+  });
+
   chatBox.scrollTop = chatBox.scrollHeight;
 }
 
@@ -512,7 +710,7 @@ startDialogBtn.addEventListener('click', async () => {
     renderDialog();
     speakEnglish(opener);
   } catch (err) {
-    chatBox.innerHTML = `<div class="small-note">${err.message}</div>`;
+    chatBox.innerHTML = `<div class="small-note">${escapeHtml(err.message)}</div>`;
   } finally {
     startDialogBtn.disabled = false;
   }
