@@ -1,0 +1,15 @@
+{
+  "name": "Tokа-Toka",
+  "short_name": "AI Toka",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f2f2f7",
+  "theme_color": "#5856D6",
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/3429/3429290.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
