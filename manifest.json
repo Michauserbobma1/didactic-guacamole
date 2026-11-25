@@ -1,15 +1,16 @@
 {
-  "name": "Tokа-Toka",
-  "short_name": "AI Toka",
+  "name": "Tok-toka",
+  "short_name": "Tok-toka",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#f2f2f7",
   "theme_color": "#5856D6",
   "icons": [
     {
-      "src": "https://cdn-icons-png.flaticon.com/512/3429/3429290.png",
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0%25' y1='0%25' x2='100%25' y2='100%25'%3E%3Cstop offset='0%25' stop-color='%235856D6'/%3E%3Cstop offset='100%25' stop-color='%238E8CE8'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='512' height='512' rx='120' fill='url(%23g)'/%3E%3Cpath fill='%23ffffff' d='M164 196h184c18 0 32 14 32 32v92c0 18-14 32-32 32h-88l-54 44v-44h-42c-18 0-32-14-32-32v-92c0-18 14-32 32-32zm52 54v48h28v-48h-28zm52 0v48h28v-48h-28zm52 0v48h28v-48h-28z'/%3E%3Ccircle cx='386' cy='152' r='26' fill='%23ffffff' fill-opacity='0.9'/%3E%3C/svg%3E",
       "sizes": "512x512",
-      "type": "image/png"
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
     }
   ]
 }
