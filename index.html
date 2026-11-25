@@ -4,7 +4,12 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Tok-toka — Тренажёр английского</title>
+  <meta name="theme-color" content="#5856D6">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Tok-toka">
   <link rel="manifest" href="manifest.json">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0%25' y1='0%25' x2='100%25' y2='100%25'%3E%3Cstop offset='0%25' stop-color='%235856D6'/%3E%3Cstop offset='100%25' stop-color='%238E8CE8'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='512' height='512' rx='120' fill='url(%23g)'/%3E%3Cpath fill='%23ffffff' d='M164 196h184c18 0 32 14 32 32v92c0 18-14 32-32 32h-88l-54 44v-44h-42c-18 0-32-14-32-32v-92c0-18 14-32 32-32zm52 54v48h28v-48h-28zm52 0v48h28v-48h-28zm52 0v48h28v-48h-28z'/%3E%3Ccircle cx='386' cy='152' r='26' fill='%23ffffff' fill-opacity='0.9'/%3E%3C/svg%3E">
+  <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0%25' y1='0%25' x2='100%25' y2='100%25'%3E%3Cstop offset='0%25' stop-color='%235856D6'/%3E%3Cstop offset='100%25' stop-color='%238E8CE8'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='512' height='512' rx='120' fill='url(%23g)'/%3E%3Cpath fill='%23ffffff' d='M164 196h184c18 0 32 14 32 32v92c0 18-14 32-32 32h-88l-54 44v-44h-42c-18 0-32-14-32-32v-92c0-18 14-32 32-32zm52 54v48h28v-48h-28zm52 0v48h28v-48h-28zm52 0v48h28v-48h-28z'/%3E%3Ccircle cx='386' cy='152' r='26' fill='%23ffffff' fill-opacity='0.9'/%3E%3C/svg%3E">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <style>
     :root {
@@ -134,12 +139,6 @@
       color: var(--text-main);
     }
 
-    input[type="file"] {
-      width: 100%;
-      font-size: 0.85rem;
-      color: var(--text-secondary);
-    }
-
     input[type="text"]:focus, select:focus, textarea:focus {
       background: #fff;
       border-color: var(--primary);
@@ -265,37 +264,49 @@
       gap: 8px;
     }
 
-    #mic-btn {
-      width: 70px;
-      height: 70px;
-      border-radius: 50%;
-      background-color: #f2f2f7;
-      border: none;
+    .voice-dual-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      width: 100%;
+    }
+
+    .voice-mode-btn {
+      padding: 13px 10px;
+      border-radius: 14px;
+      border: 1px solid #d1d1d6;
+      background: #f2f2f7;
+      color: var(--text-main);
+      font-size: 0.9rem;
+      font-weight: 700;
       cursor: pointer;
       display: flex;
       align-items: center;
       justify-content: center;
-      transition: all 0.25s ease;
-      box-shadow: 0 4px 15px rgba(0,0,0,0.06);
+      gap: 6px;
+      transition: all 0.2s ease;
     }
 
-    #mic-btn svg {
-      width: 30px;
-      height: 30px;
-      fill: var(--text-secondary);
+    .voice-mode-btn:hover:not(:disabled) {
+      border-color: var(--primary);
+      background: #eef2ff;
     }
 
-    #mic-btn.recording {
+    .voice-mode-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .voice-mode-btn.recording {
       background-color: var(--danger);
-      transform: scale(1.08);
+      border-color: var(--danger);
+      color: #fff;
       animation: pulse-ring 1.5s infinite;
     }
 
-    #mic-btn.recording svg { fill: white; }
-
     @keyframes pulse-ring {
       0% { box-shadow: 0 0 0 0 rgba(255, 59, 48, 0.4); }
-      70% { box-shadow: 0 0 0 14px rgba(255, 59, 48, 0); }
+      70% { box-shadow: 0 0 0 12px rgba(255, 59, 48, 0); }
       100% { box-shadow: 0 0 0 0 rgba(255, 59, 48, 0); }
     }
 
@@ -380,20 +391,14 @@
     }
 
     .secondary-action-btn {
-      padding: 8px 12px;
+      padding: 6px 10px;
       border: 1px solid #d1d1d6;
-      border-radius: 10px;
-      font-size: 0.82rem;
-      font-weight: 600;
-      cursor: pointer;
-      background: #f2f2f7;
+      border-radius: 8px;
+      background: #fff;
       color: var(--text-main);
-    }
-
-    .secondary-action-btn.active {
-      background: var(--primary);
-      border-color: var(--primary);
-      color: #fff;
+      font-size: 0.78rem;
+      font-weight: 700;
+      cursor: pointer;
     }
 
     .mistakes-section {
@@ -430,6 +435,101 @@
       border-left: 3px solid var(--danger);
     }
 
+    .mode-switch-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .mode-btn {
+      padding: 9px 8px;
+      border-radius: 10px;
+      border: 1px solid #d1d1d6;
+      background: #f2f2f7;
+      color: var(--text-main);
+      font-size: 0.82rem;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .mode-btn.active {
+      background: var(--primary);
+      color: #fff;
+      border-color: var(--primary);
+    }
+
+    .decks-selector-box {
+      background: #f8f8fa;
+      border: 1px solid #e5e5ea;
+      border-radius: 12px;
+      padding: 10px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .decks-list {
+      max-height: 130px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .deck-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      background: #fff;
+      padding: 7px 10px;
+      border-radius: 8px;
+      border: 1px solid #e5e5ea;
+      font-size: 0.82rem;
+    }
+
+    .deck-item label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      text-transform: none;
+      letter-spacing: 0;
+      color: var(--text-main);
+      font-size: 0.82rem;
+      font-weight: 500;
+      cursor: pointer;
+      flex: 1;
+    }
+
+    .ai-deck-panel {
+      background: #f8f8fa;
+      border: 1px solid #e5e5ea;
+      border-radius: 12px;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .deck-report-box {
+      background: #eef2ff;
+      border: 1px solid #c7d2fe;
+      border-radius: 12px;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      font-size: 0.85rem;
+      color: #1e1b4b;
+    }
+
+    .deck-report-stats {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      font-weight: 700;
+    }
+
     .flashcard-box {
       background: #fff;
       border: 1px solid #e5e5ea;
@@ -463,57 +563,6 @@
     .rate-again { background: var(--danger); }
     .rate-hard { background: var(--warn); color: #111; }
     .rate-easy { background: var(--success); }
-
-    .cards-top-actions {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      align-items: center;
-    }
-
-    .cards-subbox {
-      background: #f8f8fa;
-      border: 1px solid #e5e5ea;
-      border-radius: 14px;
-      padding: 12px;
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-    }
-
-    .deck-item {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 8px;
-      padding: 6px 0;
-      border-bottom: 1px dashed #e5e5ea;
-      font-size: 0.84rem;
-    }
-
-    .deck-item:last-child {
-      border-bottom: none;
-    }
-
-    .deck-item label {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      text-transform: none;
-      letter-spacing: 0;
-      font-size: 0.84rem;
-      color: var(--text-main);
-      cursor: pointer;
-      flex: 1;
-    }
-
-    .deck-report-stats {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 10px;
-      font-size: 0.86rem;
-      font-weight: 700;
-    }
 
     .chat-box {
       background: #f8f8fa;
@@ -568,24 +617,25 @@
       line-height: 1.35;
     }
 
-    .hidden { display: none !important; }
+    #printable-deck-sheet { display: none; }
 
     @media print {
-      body * {
-        visibility: hidden;
-      }
-      #printable-deck-sheet,
-      #printable-deck-sheet * {
-        visibility: visible;
-      }
+      body * { display: none !important; }
+      #printable-deck-sheet, #printable-deck-sheet * { display: block !important; }
       #printable-deck-sheet {
-        position: absolute;
-        left: 0;
-        top: 0;
-        width: 100%;
-        padding: 20px;
+        position: static;
+        padding: 16px;
+        color: #000;
+        background: #fff;
       }
+      #printable-deck-sheet table { display: table !important; }
+      #printable-deck-sheet thead { display: table-header-group !important; }
+      #printable-deck-sheet tbody { display: table-row-group !important; }
+      #printable-deck-sheet tr { display: table-row !important; }
+      #printable-deck-sheet th, #printable-deck-sheet td { display: table-cell !important; }
     }
+
+    .hidden { display: none !important; }
   </style>
 </head>
 <body>
@@ -598,20 +648,20 @@
     </div>
 
     <div class="tabs-nav">
-      <button class="tab-btn active" data-tab="translate">Перевод</button>
-      <button class="tab-btn" data-tab="cards">Карточки (<span id="cards-count">0</span>)</button>
-      <button class="tab-btn" data-tab="dialog">Диалог</button>
+      <button type="button" class="tab-btn active" data-tab="translate">Перевод</button>
+      <button type="button" class="tab-btn" data-tab="cards">Карточки (<span id="cards-count">0</span>)</button>
+      <button type="button" class="tab-btn" data-tab="dialog">Диалог</button>
     </div>
 
     <div class="selectors-row">
       <span class="selector-label">Уровень сложности</span>
       <div class="pills-container" id="level-pills">
-        <button class="pill" data-level="A1">A1</button>
-        <button class="pill active" data-level="A2">A2</button>
-        <button class="pill" data-level="B1">B1</button>
-        <button class="pill" data-level="B2">B2</button>
-        <button class="pill" data-level="C1">C1</button>
-        <button class="pill" data-level="C2">C2</button>
+        <button type="button" class="pill" data-level="A1">A1</button>
+        <button type="button" class="pill active" data-level="A2">A2</button>
+        <button type="button" class="pill" data-level="B1">B1</button>
+        <button type="button" class="pill" data-level="B2">B2</button>
+        <button type="button" class="pill" data-level="C1">C1</button>
+        <button type="button" class="pill" data-level="C2">C2</button>
       </div>
     </div>
 
@@ -625,18 +675,18 @@
       <div class="selectors-row">
         <span class="selector-label">Длина предложения</span>
         <div class="pills-container" id="length-pills">
-          <button class="pill" data-length="короткое">Короткое</button>
-          <button class="pill active" data-length="среднее">Среднее</button>
-          <button class="pill" data-length="длинное">Длинное</button>
+          <button type="button" class="pill" data-length="короткое">Короткое</button>
+          <button type="button" class="pill active" data-length="среднее">Среднее</button>
+          <button type="button" class="pill" data-length="длинное">Длинное</button>
         </div>
       </div>
 
-      <button id="generate-btn" class="primary-btn">Новое предложение</button>
+      <button type="button" id="generate-btn" class="primary-btn">Новое предложение</button>
 
       <div class="card-sentence">
         <div class="card-header-row">
           <span class="card-title">Переведите на английский:</span>
-          <button id="speak-btn" class="speak-btn hidden" title="Прослушать произношение">
+          <button type="button" id="speak-btn" class="speak-btn hidden" title="Прослушать произношение">
             <svg viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>
           </button>
         </div>
@@ -644,14 +694,17 @@
       </div>
 
       <div class="mic-container">
-        <button id="mic-btn" disabled title="Нажмите для записи">
-          <svg viewBox="0 0 24 24">
-            <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm-1-9c0-.55.45-1 1-1s1 .45 1 1v6c0 .55-.45 1-1 1s-1-.45-1-1V5zm6 6c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
-          </svg>
-        </button>
+        <div class="voice-dual-row">
+          <button type="button" id="fast-mic-btn" class="voice-mode-btn" disabled title="Быстрый браузерный голос (без расхода лимитов)">
+            ⚡ Быстро
+          </button>
+          <button type="button" id="record-mic-btn" class="voice-mode-btn" disabled title="Запись голоса через ИИ (для обычного темпа речи)">
+            🎙️ Запись
+          </button>
+        </div>
         <div id="status-text">Выберите параметры и нажмите кнопку выше</div>
-        <button id="manual-input-btn" class="retry-btn hidden">✏️ Ввести / изменить вручную</button>
-        <button id="retry-btn" class="retry-btn hidden">🔄 Повторить запрос</button>
+        <button type="button" id="manual-input-btn" class="retry-btn hidden">✏️ Ввести / изменить вручную</button>
+        <button type="button" id="retry-btn" class="retry-btn hidden">🔄 Повторить запрос</button>
       </div>
 
       <div id="speech-edit-card" class="speech-edit-card hidden">
@@ -665,7 +718,7 @@
 
       <div id="feedback-box" class="feedback-box hidden">
         <div id="feedback-content"></div>
-        <button id="next-card-btn" class="action-btn">Следующий пример ➡️</button>
+        <button type="button" id="next-card-btn" class="action-btn">Следующий пример ➡️</button>
       </div>
 
       <div id="mistakes-container" class="mistakes-section hidden">
@@ -677,60 +730,58 @@
       </div>
     </div>
 
-    <!-- ВКЛАДКА 2: КАРТОЧКИ + PDF + ИИ-ГЕНЕРАТОР -->
+    <!-- ВКЛАДКА 2: КАРТОЧКИ + PDF + ИИ-НАБОРЫ -->
     <div class="tab-panel hidden" id="panel-cards">
-      <div class="input-group">
-        <label for="pdf-upload">Загрузить PDF или сгенерировать набор:</label>
-        <input type="file" id="pdf-upload" accept="application/pdf">
-        <div class="cards-top-actions">
-          <button type="button" id="ai-deck-toggle-btn" class="secondary-action-btn">✨ Сгенерировать 20 карточек</button>
-        </div>
-        <div class="small-note" id="pdf-status">Загрузите PDF или сгенерируйте 20 карточек по теме/тексту.</div>
+      <div class="mode-switch-row">
+        <button type="button" id="mode-all-btn" class="mode-btn active">Все карточки</button>
+        <button type="button" id="mode-decks-btn" class="mode-btn">Выбрать наборы / PDF</button>
       </div>
 
-      <div id="ai-deck-panel" class="cards-subbox hidden">
-        <span class="card-title">ИИ-генератор (20 карточек)</span>
-        <textarea id="ai-deck-topic" rows="2" placeholder="Введите тему (например: в кафе, на вокзале) или вставьте свой текст..."></textarea>
-        <button type="button" id="ai-deck-generate-btn" class="action-btn">Создать 20 карточек и сохранить в PDF/набор</button>
-        <div class="small-note" id="ai-deck-status"></div>
-      </div>
-
-      <div class="selectors-row">
-        <span class="selector-label">Режим тренировки</span>
-        <div class="cards-top-actions">
-          <button type="button" id="mode-all-btn" class="secondary-action-btn active">Общий режим</button>
-          <button type="button" id="mode-decks-btn" class="secondary-action-btn">По наборам / PDF</button>
-        </div>
-      </div>
-
-      <div id="decks-selector-box" class="cards-subbox hidden">
-        <span class="card-title">Выберите один или несколько наборов / PDF:</span>
-        <div id="decks-list-container"></div>
+      <div id="decks-selector-box" class="decks-selector-box hidden">
+        <div class="card-title">Наборы и загруженные PDF:</div>
+        <div id="decks-list-container" class="decks-list"></div>
         <button type="button" id="start-decks-btn" class="action-btn">Начать по выбранным</button>
+      </div>
+
+      <div class="input-group">
+        <label for="pdf-upload">Загрузить PDF со списком слов:</label>
+        <input type="file" id="pdf-upload" accept="application/pdf">
+        <div class="small-note" id="pdf-status">Загрузите PDF или создайте набор из 20 карточек через ИИ.</div>
+      </div>
+
+      <button type="button" id="ai-deck-toggle-btn" class="secondary-action-btn">✨ Сгенерировать 20 карточек</button>
+
+      <div id="ai-deck-panel" class="ai-deck-panel hidden">
+        <label for="ai-deck-topic">Тема или текст для 20 карточек:</label>
+        <textarea id="ai-deck-topic" rows="2" placeholder="Например: деловая переписка, собеседование или вставьте текст..."></textarea>
+        <button type="button" id="ai-deck-generate-btn" class="action-btn">Создать 20 карточек</button>
+        <div id="ai-deck-status" class="small-note"></div>
       </div>
 
       <div class="flashcard-box">
         <div class="card-header-row">
           <span class="card-title">Текущая карточка</span>
-          <button id="fc-speak-btn" class="speak-btn" title="Озвучить">
+          <button type="button" id="fc-speak-btn" class="speak-btn" title="Озвучить">
             <svg viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>
           </button>
         </div>
         <div class="fc-front" id="fc-front">Карточек пока нет</div>
         <div class="fc-back hidden" id="fc-back"></div>
-        <button class="action-btn" id="fc-toggle-btn">Показать перевод</button>
+        <button type="button" class="action-btn" id="fc-toggle-btn">Показать перевод</button>
       </div>
 
       <div class="rate-grid">
-        <button class="rate-btn rate-again" data-rate="again">Не помню</button>
-        <button class="rate-btn rate-hard" data-rate="hard">Трудно</button>
-        <button class="rate-btn rate-easy" data-rate="easy">Легко</button>
+        <button type="button" class="rate-btn rate-again" data-rate="again">Не помню</button>
+        <button type="button" class="rate-btn rate-hard" data-rate="hard">Трудно</button>
+        <button type="button" class="rate-btn rate-easy" data-rate="easy">Легко</button>
       </div>
 
-      <div id="deck-report-box" class="cards-subbox hidden">
-        <span class="card-title">Отчёт по пройденному набору</span>
+      <div id="deck-report-box" class="deck-report-box hidden">
+        <div class="card-header-row">
+          <span class="card-title">Отчёт по пройденному набору</span>
+          <button type="button" id="deck-report-close-btn" class="secondary-action-btn">Скрыть</button>
+        </div>
         <div id="deck-report-content"></div>
-        <button type="button" id="deck-report-close-btn" class="secondary-action-btn">Закрыть отчёт</button>
       </div>
     </div>
 
@@ -746,20 +797,19 @@
       </div>
 
       <div class="input-group">
-        <label for="dialog-custom-topic">Своя тема (если заполнена — используется она):</label>
-        <input type="text" id="dialog-custom-topic" placeholder="Например: заказ кофе, опоздание на поезд или любая тема">
-        <div class="small-note">Подсказка: лучше брать простую бытовую тему (кафе, попутчик, магазин, отель) — так проще держать живой разговор. Но можно ввести любую тему.</div>
+        <label for="dialog-custom-topic">Или своя тема (необязательно):</label>
+        <input type="text" id="dialog-custom-topic" placeholder="Например: покупка кофе, спор о кино">
       </div>
 
-      <button id="start-dialog-btn" class="primary-btn">Начать новый диалог</button>
+      <button type="button" id="start-dialog-btn" class="primary-btn">Начать новый диалог</button>
 
       <div class="chat-box" id="chat-box">
-        <div class="small-note">Нажмите «Начать новый диалог», чтобы ИИ задал первый вопрос.</div>
+        <div class="small-note">Выберите сценарий или напишите свою тему и нажмите «Начать новый диалог».</div>
       </div>
 
       <div class="chat-row">
         <input type="text" id="dialog-input" placeholder="Напишите ответ на английском...">
-        <button id="send-dialog-btn" class="action-btn" style="width:auto; padding:0 16px;">➤</button>
+        <button type="button" id="send-dialog-btn" class="action-btn" style="width:auto; padding:0 16px;">➤</button>
       </div>
     </div>
   </div>
