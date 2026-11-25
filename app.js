@@ -80,8 +80,7 @@ let decks = JSON.parse(localStorage.getItem('decks') || '[]');
 let isRecording = false;
 let manualStopRequested = false;
 let recognition = null;
-let finalTranscriptBuffer = '';
-let latestInterimBuffer = '';
+let speechChunks = [];
 
 let currentRussianSentence = '';
 let currentEnglishTranslation = '';
@@ -172,117 +171,89 @@ function speakEnglish(text) {
   window.speechSynthesis.speak(utterance);
 }
 
-// --- РУЧНОЙ TOGGLE-МИКРОФОН И УЛУЧШЕННОЕ РАСПОЗНАВАНИЕ ---
+// --- КНОПКА ЗАПИСИ/СТОПА ДЛЯ БЕГЛОЙ РЕЧИ ---
 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-
-function getCombinedTranscript() {
-  return `${finalTranscriptBuffer} ${latestInterimBuffer}`.replace(/\s+/g, ' ').trim();
-}
-
-function pickBestAlternative(result) {
-  let best = result[0];
-  for (let i = 1; i < result.length; i++) {
-    if ((result[i].confidence || 0) > (best.confidence || 0)) {
-      best = result[i];
-    }
-  }
-  return best ? best.transcript.trim() : '';
-}
 
 if (SpeechRecognition) {
   recognition = new SpeechRecognition();
   recognition.lang = 'en-US';
   recognition.continuous = true;
-  recognition.interimResults = true;
-  recognition.maxAlternatives = 3;
+  recognition.interimResults = false;
+  recognition.maxAlternatives = 1;
 
   recognition.onstart = () => {
     isRecording = true;
     manualStopRequested = false;
-    finalTranscriptBuffer = '';
-    latestInterimBuffer = '';
+    speechChunks = [];
     if (micBtn) micBtn.classList.add('recording');
-    if (statusText) statusText.innerText = 'Запись включена. Нажмите на микрофон ещё раз, чтобы остановить.';
+    if (statusText) statusText.innerText = 'Говорите в обычном темпе... Нажмите на микрофон для остановки';
   };
 
   recognition.onresult = (event) => {
-    let finalChunk = '';
-    let interimChunk = '';
-
     for (let i = event.resultIndex; i < event.results.length; i++) {
-      const phrase = pickBestAlternative(event.results[i]);
-      if (!phrase) continue;
       if (event.results[i].isFinal) {
-        finalChunk += (finalChunk ? ' ' : '') + phrase;
-      } else {
-        interimChunk += (interimChunk ? ' ' : '') + phrase;
+        const part = event.results[i]?.[0]?.transcript?.trim();
+        if (part) speechChunks.push(part);
       }
     }
-
-    if (finalChunk) {
-      finalTranscriptBuffer = `${finalTranscriptBuffer} ${finalChunk}`.trim();
-      latestInterimBuffer = '';
-    } else {
-      latestInterimBuffer = interimChunk;
-    }
-
-    const preview = getCombinedTranscript();
-    if (preview && speechInput && speechEditCard) {
-      speechInput.value = preview;
-      speechEditCard.classList.remove('hidden');
-      if (statusText) statusText.innerText = 'Распознаю... Нажмите на микрофон снова, когда закончите.';
+    const combined = speechChunks.join(' ').trim();
+    if (combined && speechInput) {
+      speechInput.value = combined;
     }
   };
 
   recognition.onerror = (event) => {
     const errCode = event?.error || '';
-    const collected = getCombinedTranscript() || (speechInput ? speechInput.value.trim() : '');
+    const currentText = speechChunks.join(' ').trim() || (speechInput ? speechInput.value.trim() : '');
 
-    isRecording = false;
-    if (micBtn) micBtn.classList.remove('recording');
-
-    if (manualStopRequested && collected) {
-      openSpeechEditor(collected);
+    if (manualStopRequested && currentText) {
+      isRecording = false;
+      if (micBtn) micBtn.classList.remove('recording');
+      openSpeechEditor(currentText);
       if (statusText) statusText.innerText = 'Запись остановлена. Проверьте текст и нажмите «Готово».';
       return;
     }
 
+    if (errCode === 'no-speech' && isRecording && !manualStopRequested) {
+      return;
+    }
+
+    isRecording = false;
+    if (micBtn) micBtn.classList.remove('recording');
+
     if (statusText) {
       if (errCode === 'not-allowed' || errCode === 'service-not-allowed') {
-        statusText.innerText = 'Доступ к микрофону запрещён. Разрешите его в настройках браузера или введите текст вручную.';
-      } else if (errCode === 'no-speech') {
-        statusText.innerText = 'Речь не уловлена. Нажмите на микрофон, скажите фразу и нажмите снова для остановки.';
+        statusText.innerText = 'Нет доступа к микрофону. Разрешите его в браузере или введите текст вручную.';
       } else {
-        statusText.innerText = 'Сбой распознавания. Проверьте текст ниже или введите вручную.';
+        statusText.innerText = 'Сбой микрофона. Подправьте текст ниже или введите вручную.';
       }
     }
 
     if (currentRussianSentence) {
-      openSpeechEditor(collected);
+      openSpeechEditor(currentText);
     }
   };
 
   recognition.onend = () => {
-    const collected = getCombinedTranscript();
-    isRecording = false;
-    if (micBtn) micBtn.classList.remove('recording');
+    const combined = speechChunks.join(' ').trim() || (speechInput ? speechInput.value.trim() : '');
 
-    if (manualStopRequested) {
-      manualStopRequested = false;
-      const finalText = collected || (speechInput ? speechInput.value.trim() : '');
-      if (finalText) {
-        openSpeechEditor(finalText);
-        if (statusText) statusText.innerText = 'Запись выключена. Проверьте текст и нажмите «Готово».';
-      } else if (currentRussianSentence) {
-        openSpeechEditor('');
-        if (statusText) statusText.innerText = 'Ничего не распознано. Попробуйте ещё раз или введите текст вручную.';
-      }
-      return;
+    if (isRecording && !manualStopRequested) {
+      try {
+        recognition.start();
+        return;
+      } catch (_) {}
     }
 
-    if (collected) {
-      openSpeechEditor(collected);
-      if (statusText) statusText.innerText = 'Проверьте распознанный текст и нажмите «Готово».';
+    isRecording = false;
+    manualStopRequested = false;
+    if (micBtn) micBtn.classList.remove('recording');
+
+    if (combined) {
+      openSpeechEditor(combined);
+      if (statusText) statusText.innerText = 'Готово! Проверьте текст и нажмите «Готово».';
+    } else if (currentRussianSentence) {
+      openSpeechEditor('');
+      if (statusText) statusText.innerText = 'Речь не уловлена. Попробуйте ещё раз или введите вручную.';
     }
   };
 } else if (statusText) {
@@ -294,28 +265,27 @@ function stopMicManual() {
   isRecording = false;
   if (micBtn) micBtn.classList.remove('recording');
 
-  const collected = getCombinedTranscript();
-  if (collected) {
-    openSpeechEditor(collected);
+  const combined = speechChunks.join(' ').trim() || (speechInput ? speechInput.value.trim() : '');
+  if (combined) {
+    openSpeechEditor(combined);
   }
 
   if (recognition) {
     try {
       recognition.stop();
-    } catch (e) {}
+    } catch (_) {}
   }
 }
 
 function resetMicState() {
   manualStopRequested = false;
   isRecording = false;
-  finalTranscriptBuffer = '';
-  latestInterimBuffer = '';
+  speechChunks = [];
   if (micBtn) micBtn.classList.remove('recording');
   if (recognition) {
     try {
       recognition.abort();
-    } catch (e) {}
+    } catch (_) {}
   }
 }
 
@@ -483,6 +453,7 @@ async function checkTranslation(userSpeech) {
 Фраза (рус): "${currentRussianSentence}"
 Перевод (анг): "${currentEnglishTranslation}"
 Ответ пользователя (анг): "${userSpeech}"
+Примечание: ответ мог быть записан через голосовой ввод браузера при беглой речи, поэтому мелкие опечатки распознавания не считай грубой ошибкой, если смысл и грамматика в целом верны.
 
 Оцени кратко на русском с поправкой на уровень ${selectedLevel}:
 1. Статус: Верно / Ошибка.
